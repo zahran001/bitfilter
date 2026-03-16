@@ -1,6 +1,7 @@
 # Secrets / local config
 .mcp.json
 .mcp-*.sh
+.claude/
 
 # Build directories
 build/
