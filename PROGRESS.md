@@ -27,18 +27,25 @@ AVX2 only 21% faster than scalar at 500M — likely because `-O3 -march=native` 
 
 | Chunk | Deliverable | Status |
 |-------|-------------|--------|
-| 1 | Disable auto-vectorization of eval_scalar, re-baseline | ⬜ |
+| 1 | Disable auto-vectorization of eval_scalar, re-baseline | ✅ Done |
 | 2 | Loop unrolling — eval_avx2_unroll2 + eval_avx2_unroll4, correctness tests | ⬜ |
 | 3 | Benchmark unrolled variants at all three sizes | ⬜ |
 | 4 | Software prefetching — eval_avx2_prefetch, correctness test + benchmark | ⬜ |
 | 5 | Popcount benchmark tiers — naive vs __builtin vs _mm_popcnt_u64 | ⬜ |
 
-**Chunk 1 — Disable scalar auto-vectorization + re-baseline**
+**Chunk 1 — Disable scalar auto-vectorization + re-baseline** ✅
 
-The scalar path is the correctness reference. With `-O3 -march=native`, GCC auto-vectorizes
-it to AVX2, defeating its purpose as an independent baseline (both paths could produce the
-same wrong answer for an ANDNOT operand swap). Add `__attribute__((optimize("no-tree-vectorize")))`
-to `eval_scalar`, then re-run benchmarks to establish the true scalar-vs-SIMD gap.
+Added `__attribute__((optimize("no-tree-vectorize")))` to `eval_scalar`. Re-baselined:
+
+| Benchmark | 1M users | 10M users | 500M users |
+|-----------|----------|-----------|------------|
+| Scalar (de-vectorized) | 0.010 ms (47.1 GB/s) | 0.133 ms (35.2 GB/s) | 14.4 ms (16.2 GB/s) |
+| AVX2 | 0.005 ms (101.4 GB/s) | 0.110 ms (42.3 GB/s) | 18.8 ms (12.4 GB/s) |
+
+At 1M (L3-resident): AVX2 is **2x faster** — compute-bound, SIMD wins clearly.
+At 500M (DRAM-bound): scalar is actually faster (16.2 vs 12.4 GB/s). The single-register
+AVX2 loop has more instruction overhead per word than the compiler's optimized scalar loop.
+This is the gap that unrolling and prefetching aim to close in Chunks 2-4.
 
 **Chunk 2 — Loop unrolling (2x and 4x)**
 
