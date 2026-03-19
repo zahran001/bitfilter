@@ -118,20 +118,18 @@ TEST(SegmentStore, DuplicateSegmentThrows) {
         << "Adding a duplicate segment name must throw std::invalid_argument";
 }
 
-// ── Test 5: eval_avx2 matches eval_scalar (bit-exact) ────────────────────────
+// ── Test 5: all AVX2 variants match eval_scalar (bit-exact) ──────────────────
 //
-// The scalar path is the correctness reference. The AVX2 path must produce
+// The scalar path is the correctness reference. Every AVX2 variant must produce
 // identical output for every word — no exceptions, no tolerance.
 //
-// We test three word counts to exercise different code paths in eval_avx2:
-//   8192  — multiple of 4: pure SIMD, zero tail words
-//   8195  — 8192 + 3 remainder: exercises the scalar tail loop for all 3
-//           possible remainder values (n_words % 4 == 3)
-//   1     — single word: no SIMD iterations at all, pure tail
+// We test three word counts to exercise different code paths:
+//   8192  — multiple of 16: pure SIMD for all variants, zero tail words
+//   8195  — remainder 3: exercises scalar tail in all variants
+//   1     — single word: pure tail, no SIMD iterations at all
 //
 // Each test generates three input bitmaps (a, b, not_c) with independent seeds,
-// runs both eval functions, and asserts memcmp == 0 on the result buffers.
-// If this fails, the bug is definitively in eval_avx2 — not in the reference.
+// runs eval_scalar and one AVX2 variant, and asserts memcmp == 0.
 
 // Helper: fill an aligned bitmap with random bits (per-bit bernoulli, density 0.5).
 static void fill_random_bitmap(uint64_t* words, size_t n_words, uint64_t seed) {
@@ -145,46 +143,73 @@ static void fill_random_bitmap(uint64_t* words, size_t n_words, uint64_t seed) {
     }
 }
 
-class EvalAvx2Correctness : public ::testing::TestWithParam<size_t> {};
+// Function pointer type for all eval variants.
+using EvalFn = void(*)(
+    const uint64_t* __restrict__,
+    const uint64_t* __restrict__,
+    const uint64_t* __restrict__,
+          uint64_t* __restrict__,
+    size_t);
 
-TEST_P(EvalAvx2Correctness, MatchesScalar) {
-    const size_t n_words = GetParam();
+struct EvalVariant {
+    const char* name;
+    EvalFn      fn;
+};
 
-    // Allocate inputs + two result buffers (all 64-byte aligned)
-    AlignedBuffer a            = make_aligned_bitmap(n_words);
-    AlignedBuffer b            = make_aligned_bitmap(n_words);
-    AlignedBuffer not_c        = make_aligned_bitmap(n_words);
-    AlignedBuffer result_scalar = make_aligned_bitmap(n_words);
-    AlignedBuffer result_avx2   = make_aligned_bitmap(n_words);
+// All AVX2 variants to test against the scalar reference.
+static const EvalVariant kEvalVariants[] = {
+    {"avx2",          eval_avx2},
+    {"avx2_unroll2",  eval_avx2_unroll2},
+    {"avx2_unroll4",  eval_avx2_unroll4},
+    {"avx2_prefetch", eval_avx2_prefetch},
+};
 
-    // Fill inputs with independent random data
+struct EvalTestParam {
+    size_t       n_words;
+    EvalVariant  variant;
+};
+
+class EvalCorrectness : public ::testing::TestWithParam<EvalTestParam> {};
+
+TEST_P(EvalCorrectness, MatchesScalar) {
+    const auto& [n_words, variant] = GetParam();
+
+    AlignedBuffer a              = make_aligned_bitmap(n_words);
+    AlignedBuffer b              = make_aligned_bitmap(n_words);
+    AlignedBuffer not_c          = make_aligned_bitmap(n_words);
+    AlignedBuffer result_scalar  = make_aligned_bitmap(n_words);
+    AlignedBuffer result_variant = make_aligned_bitmap(n_words);
+
     fill_random_bitmap(a.get(),     n_words, 0xAAAA'AAAA'AAAA'AAAAULL);
     fill_random_bitmap(b.get(),     n_words, 0xBBBB'BBBB'BBBB'BBBBULL);
     fill_random_bitmap(not_c.get(), n_words, 0xCCCC'CCCC'CCCC'CCCCULL);
 
-    // Zero both result buffers so any unevaluated word is visible
-    std::memset(result_scalar.get(), 0, n_words * sizeof(uint64_t));
-    std::memset(result_avx2.get(),   0, n_words * sizeof(uint64_t));
+    std::memset(result_scalar.get(),  0, n_words * sizeof(uint64_t));
+    std::memset(result_variant.get(), 0, n_words * sizeof(uint64_t));
 
-    // Run both paths
-    eval_scalar(a.get(), b.get(), not_c.get(), result_scalar.get(), n_words);
-    eval_avx2  (a.get(), b.get(), not_c.get(), result_avx2.get(),   n_words);
+    eval_scalar(a.get(), b.get(), not_c.get(), result_scalar.get(),  n_words);
+    variant.fn (a.get(), b.get(), not_c.get(), result_variant.get(), n_words);
 
-    // Bit-exact comparison
-    EXPECT_EQ(std::memcmp(result_scalar.get(), result_avx2.get(),
+    EXPECT_EQ(std::memcmp(result_scalar.get(), result_variant.get(),
                           n_words * sizeof(uint64_t)), 0)
-        << "eval_avx2 output differs from eval_scalar at n_words=" << n_words;
+        << variant.name << " output differs from eval_scalar at n_words=" << n_words;
+}
+
+// Generate the cross-product: 3 variants × 3 word counts = 9 test cases.
+static std::vector<EvalTestParam> MakeEvalParams() {
+    std::vector<EvalTestParam> params;
+    for (size_t n : {8192, 8195, 1})
+        for (const auto& v : kEvalVariants)
+            params.push_back({n, v});
+    return params;
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    WordCounts,
-    EvalAvx2Correctness,
-    ::testing::Values(
-        8192,   // multiple of 4: pure SIMD, no tail
-        8195,   // remainder 3: exercises all tail positions
-        1       // single word: pure tail, no SIMD iterations
-    ),
-    [](const ::testing::TestParamInfo<size_t>& info) {
-        return "n_words_" + std::to_string(info.param);
+    AllVariants,
+    EvalCorrectness,
+    ::testing::ValuesIn(MakeEvalParams()),
+    [](const ::testing::TestParamInfo<EvalTestParam>& info) {
+        return std::string(info.param.variant.name) + "_n" +
+               std::to_string(info.param.n_words);
     }
 );

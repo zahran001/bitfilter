@@ -50,6 +50,8 @@ add_library(bitfilter STATIC
     src/segment_store.cpp
     src/query_eval_scalar.cpp
     src/query_eval_avx2.cpp
+    src/query_eval_avx2_unroll.cpp
+    src/query_eval_avx2_prefetch.cpp
 )
 target_include_directories(bitfilter PUBLIC include)
 

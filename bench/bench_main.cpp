@@ -95,4 +95,55 @@ BENCHMARK_REGISTER_F(EvalFixture, Avx2)
     ->Arg(500'000'000)
     ->Unit(benchmark::kMillisecond);
 
+// ── AVX2 2x unrolled ────────────────────────────────────────────────────────
+BENCHMARK_DEFINE_F(EvalFixture, Avx2Unroll2)(benchmark::State& state) {
+    for (auto _ : state) {
+        eval_avx2_unroll2(a_.get(), b_.get(), not_c_.get(), result_.get(), n_words_);
+        benchmark::ClobberMemory();
+    }
+    state.SetBytesProcessed(
+        static_cast<int64_t>(state.iterations()) *
+        static_cast<int64_t>(n_words_) * 4 * 8);
+}
+
+BENCHMARK_REGISTER_F(EvalFixture, Avx2Unroll2)
+    ->Arg(1'000'000)
+    ->Arg(10'000'000)
+    ->Arg(500'000'000)
+    ->Unit(benchmark::kMillisecond);
+
+// ── AVX2 4x unrolled ────────────────────────────────────────────────────────
+BENCHMARK_DEFINE_F(EvalFixture, Avx2Unroll4)(benchmark::State& state) {
+    for (auto _ : state) {
+        eval_avx2_unroll4(a_.get(), b_.get(), not_c_.get(), result_.get(), n_words_);
+        benchmark::ClobberMemory();
+    }
+    state.SetBytesProcessed(
+        static_cast<int64_t>(state.iterations()) *
+        static_cast<int64_t>(n_words_) * 4 * 8);
+}
+
+BENCHMARK_REGISTER_F(EvalFixture, Avx2Unroll4)
+    ->Arg(1'000'000)
+    ->Arg(10'000'000)
+    ->Arg(500'000'000)
+    ->Unit(benchmark::kMillisecond);
+
+// ── AVX2 with prefetching ────────────────────────────────────────────────────
+BENCHMARK_DEFINE_F(EvalFixture, Avx2Prefetch)(benchmark::State& state) {
+    for (auto _ : state) {
+        eval_avx2_prefetch(a_.get(), b_.get(), not_c_.get(), result_.get(), n_words_);
+        benchmark::ClobberMemory();
+    }
+    state.SetBytesProcessed(
+        static_cast<int64_t>(state.iterations()) *
+        static_cast<int64_t>(n_words_) * 4 * 8);
+}
+
+BENCHMARK_REGISTER_F(EvalFixture, Avx2Prefetch)
+    ->Arg(1'000'000)
+    ->Arg(10'000'000)
+    ->Arg(500'000'000)
+    ->Unit(benchmark::kMillisecond);
+
 // main() provided by benchmark::benchmark_main

@@ -20,6 +20,30 @@ void eval_avx2(
           uint64_t* __restrict__ result,
     size_t n_words);
 
+// AVX2 2x unrolled — 8 uint64_t (512 bits) per iteration.
+void eval_avx2_unroll2(
+    const uint64_t* __restrict__ a,
+    const uint64_t* __restrict__ b,
+    const uint64_t* __restrict__ not_c,
+          uint64_t* __restrict__ result,
+    size_t n_words);
+
+// AVX2 with software prefetching — hides DRAM latency.
+void eval_avx2_prefetch(
+    const uint64_t* __restrict__ a,
+    const uint64_t* __restrict__ b,
+    const uint64_t* __restrict__ not_c,
+          uint64_t* __restrict__ result,
+    size_t n_words);
+
+// AVX2 4x unrolled — 16 uint64_t (1024 bits) per iteration.
+void eval_avx2_unroll4(
+    const uint64_t* __restrict__ a,
+    const uint64_t* __restrict__ b,
+    const uint64_t* __restrict__ not_c,
+          uint64_t* __restrict__ result,
+    size_t n_words);
+
 // Hardware popcount using _mm_popcnt_u64.
 // Counts set bits across all n_words words.
 // Padding bits (positions [n_users .. n_words*64)) are guaranteed zero

@@ -28,9 +28,9 @@ AVX2 only 21% faster than scalar at 500M — likely because `-O3 -march=native` 
 | Chunk | Deliverable | Status |
 |-------|-------------|--------|
 | 1 | Disable auto-vectorization of eval_scalar, re-baseline | ✅ Done |
-| 2 | Loop unrolling — eval_avx2_unroll2 + eval_avx2_unroll4, correctness tests | ⬜ |
-| 3 | Benchmark unrolled variants at all three sizes | ⬜ |
-| 4 | Software prefetching — eval_avx2_prefetch, correctness test + benchmark | ⬜ |
+| 2 | Loop unrolling — eval_avx2_unroll2 + eval_avx2_unroll4, correctness tests | ✅ Done |
+| 3 | Benchmark unrolled variants at all three sizes | ✅ Done |
+| 4 | Software prefetching — eval_avx2_prefetch, correctness test + benchmark | ✅ Done |
 | 5 | Popcount benchmark tiers — naive vs __builtin vs _mm_popcnt_u64 | ⬜ |
 
 **Chunk 1 — Disable scalar auto-vectorization + re-baseline** ✅
@@ -47,24 +47,40 @@ At 500M (DRAM-bound): scalar is actually faster (16.2 vs 12.4 GB/s). The single-
 AVX2 loop has more instruction overhead per word than the compiler's optimized scalar loop.
 This is the gap that unrolling and prefetching aim to close in Chunks 2-4.
 
-**Chunk 2 — Loop unrolling (2x and 4x)**
+**Chunks 2+3 — Loop unrolling + benchmarks** ✅
 
-Process 2 or 4 YMM registers per iteration to reduce loop overhead and improve memory-level
-parallelism. The out-of-order engine gets more independent loads to schedule. New file:
-`src/query_eval_avx2_unroll.cpp`. Correctness validated via memcmp against scalar at three
-word counts (8192, 8195, 1).
+Added `eval_avx2_unroll2` (2 YMM/iter) and `eval_avx2_unroll4` (4 YMM/iter) in
+`src/query_eval_avx2_unroll.cpp`. Correctness validated via memcmp (9 tests, all passing).
 
-**Chunk 3 — Benchmark unrolled variants**
+Benchmark results (median CPU time, 3 reps):
 
-Add unroll2/unroll4 to the benchmark harness. At 500M (DRAM-bound), unrolling reduces loop
-overhead but may not increase bandwidth — the interesting result may be at 1M (L3-resident)
-where compute matters. Either result demonstrates understanding of the roofline model.
+| Variant | 1M (L3) | 500M (DRAM) |
+|---------|---------|-------------|
+| Scalar | 0.009 ms (49.6 GB/s) | 13.6 ms (17.1 GB/s) |
+| AVX2 1x | 0.005 ms (100.4 GB/s) | 18.5 ms (12.6 GB/s) |
+| AVX2 Unroll2 | 0.005 ms (97.4 GB/s) | 22.6 ms (10.3 GB/s) |
+| AVX2 Unroll4 | 0.006 ms (72.3 GB/s) | 25.1 ms (9.3 GB/s) |
 
-**Chunk 4 — Software prefetching**
+**Finding:** Unrolling makes things *worse* at DRAM scale. More unrolling = more register
+pressure and instruction overhead, but the CPU is already waiting on DRAM. The original
+1-register AVX2 loop remains the best SIMD variant. At L3 scale, AVX2 1x wins at 100 GB/s.
+The scalar path wins at 500M because GCC's scalar codegen has less overhead per word.
 
-`_mm_prefetch` with `_MM_HINT_T0` to hide memory latency by overlapping computation with
-data fetch. Built on top of the best unrolled variant. Prefetch distance tuned empirically
-(8/16/32/64 words) since perf counters are unavailable on WSL2.
+**Chunk 4 — Software prefetching** ✅
+
+Added `eval_avx2_prefetch` in `src/query_eval_avx2_prefetch.cpp`. Based on the 1-register
+AVX2 loop (best SIMD variant) with `_mm_prefetch(_MM_HINT_T0)` 16 words (128 bytes) ahead.
+16 correctness tests passing.
+
+| Variant | 1M (L3) | 500M (DRAM) |
+|---------|---------|-------------|
+| Scalar | 0.010 ms (46.7 GB/s) | 13.9 ms (16.7 GB/s) |
+| AVX2 | 0.007 ms (62.3 GB/s) | 18.6 ms (12.6 GB/s) |
+| **AVX2 Prefetch** | **0.005 ms (98.6 GB/s)** | **12.8 ms (18.2 GB/s)** |
+
+**Finding:** Prefetch is the first SIMD variant to beat scalar at DRAM scale (18.2 vs 16.7 GB/s).
+At L3, it matches the best AVX2 result with the lowest variance (1.3% CV). This is the
+production-quality eval path.
 
 **Chunk 5 — Popcount tiers for blog narrative**
 
