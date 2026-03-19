@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 #include "segment_store.hpp"
 #include "query_eval.hpp"
+#include "aligned_alloc.hpp"
 #include "datagen.hpp"
 #include <cstring>
 #include <cstdint>
+#include <random>
 
 // ── Test 1: zero-initialisation ───────────────────────────────────────────────
 //
@@ -115,3 +117,74 @@ TEST(SegmentStore, DuplicateSegmentThrows) {
     EXPECT_THROW(store.add_segment("dup"), std::invalid_argument)
         << "Adding a duplicate segment name must throw std::invalid_argument";
 }
+
+// ── Test 5: eval_avx2 matches eval_scalar (bit-exact) ────────────────────────
+//
+// The scalar path is the correctness reference. The AVX2 path must produce
+// identical output for every word — no exceptions, no tolerance.
+//
+// We test three word counts to exercise different code paths in eval_avx2:
+//   8192  — multiple of 4: pure SIMD, zero tail words
+//   8195  — 8192 + 3 remainder: exercises the scalar tail loop for all 3
+//           possible remainder values (n_words % 4 == 3)
+//   1     — single word: no SIMD iterations at all, pure tail
+//
+// Each test generates three input bitmaps (a, b, not_c) with independent seeds,
+// runs both eval functions, and asserts memcmp == 0 on the result buffers.
+// If this fails, the bug is definitively in eval_avx2 — not in the reference.
+
+// Helper: fill an aligned bitmap with random bits (per-bit bernoulli, density 0.5).
+static void fill_random_bitmap(uint64_t* words, size_t n_words, uint64_t seed) {
+    std::mt19937_64 rng(seed);
+    std::bernoulli_distribution dist(0.5);
+    for (size_t w = 0; w < n_words; ++w) {
+        uint64_t word = 0;
+        for (int b = 0; b < 64; ++b)
+            if (dist(rng)) word |= (UINT64_C(1) << b);
+        words[w] = word;
+    }
+}
+
+class EvalAvx2Correctness : public ::testing::TestWithParam<size_t> {};
+
+TEST_P(EvalAvx2Correctness, MatchesScalar) {
+    const size_t n_words = GetParam();
+
+    // Allocate inputs + two result buffers (all 64-byte aligned)
+    AlignedBuffer a            = make_aligned_bitmap(n_words);
+    AlignedBuffer b            = make_aligned_bitmap(n_words);
+    AlignedBuffer not_c        = make_aligned_bitmap(n_words);
+    AlignedBuffer result_scalar = make_aligned_bitmap(n_words);
+    AlignedBuffer result_avx2   = make_aligned_bitmap(n_words);
+
+    // Fill inputs with independent random data
+    fill_random_bitmap(a.get(),     n_words, 0xAAAA'AAAA'AAAA'AAAAULL);
+    fill_random_bitmap(b.get(),     n_words, 0xBBBB'BBBB'BBBB'BBBBULL);
+    fill_random_bitmap(not_c.get(), n_words, 0xCCCC'CCCC'CCCC'CCCCULL);
+
+    // Zero both result buffers so any unevaluated word is visible
+    std::memset(result_scalar.get(), 0, n_words * sizeof(uint64_t));
+    std::memset(result_avx2.get(),   0, n_words * sizeof(uint64_t));
+
+    // Run both paths
+    eval_scalar(a.get(), b.get(), not_c.get(), result_scalar.get(), n_words);
+    eval_avx2  (a.get(), b.get(), not_c.get(), result_avx2.get(),   n_words);
+
+    // Bit-exact comparison
+    EXPECT_EQ(std::memcmp(result_scalar.get(), result_avx2.get(),
+                          n_words * sizeof(uint64_t)), 0)
+        << "eval_avx2 output differs from eval_scalar at n_words=" << n_words;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    WordCounts,
+    EvalAvx2Correctness,
+    ::testing::Values(
+        8192,   // multiple of 4: pure SIMD, no tail
+        8195,   // remainder 3: exercises all tail positions
+        1       // single word: pure tail, no SIMD iterations
+    ),
+    [](const ::testing::TestParamInfo<size_t>& info) {
+        return "n_words_" + std::to_string(info.param);
+    }
+);
