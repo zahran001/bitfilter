@@ -1,0 +1,81 @@
+# BitFilter — Progress Tracker
+
+---
+
+## Week 1 — Foundation and correctness ✅
+
+| Chunk | Deliverable | Status |
+|-------|-------------|--------|
+| 1 | Project skeleton, CMake, directory structure, stub files | ✅ Done |
+| 2 | SegmentStore, aligned_alloc, set_bit/get_bit, popcount, DataGen | ✅ Done |
+| 3 | eval_scalar + data generator (already delivered in Chunks 1-2) | ✅ Done |
+| 4 | eval_avx2 correctness tests — bit-exact memcmp at 3 word counts | ✅ Done |
+| 5 | Google Benchmark harness — scalar vs AVX2 at 1M/10M/500M users | ✅ Done |
+
+**Week 1 baseline (Intel 12th Gen, WSL2):**
+
+| Benchmark | 1M users | 10M users | 500M users |
+|-----------|----------|-----------|------------|
+| Scalar | 0.007 ms (65.4 GB/s) | 0.154 ms (30.2 GB/s) | 31.1 ms (7.5 GB/s) |
+| AVX2 | 0.007 ms (65.6 GB/s) | 0.211 ms (22.0 GB/s) | 25.7 ms (9.1 GB/s) |
+
+AVX2 only 21% faster than scalar at 500M — likely because `-O3 -march=native` auto-vectorizes the scalar path.
+
+---
+
+## Week 2 — AVX2 optimization and measurement
+
+| Chunk | Deliverable | Status |
+|-------|-------------|--------|
+| 1 | Disable auto-vectorization of eval_scalar, re-baseline | ⬜ |
+| 2 | Loop unrolling — eval_avx2_unroll2 + eval_avx2_unroll4, correctness tests | ⬜ |
+| 3 | Benchmark unrolled variants at all three sizes | ⬜ |
+| 4 | Software prefetching — eval_avx2_prefetch, correctness test + benchmark | ⬜ |
+| 5 | Popcount benchmark tiers — naive vs __builtin vs _mm_popcnt_u64 | ⬜ |
+
+**Chunk 1 — Disable scalar auto-vectorization + re-baseline**
+
+The scalar path is the correctness reference. With `-O3 -march=native`, GCC auto-vectorizes
+it to AVX2, defeating its purpose as an independent baseline (both paths could produce the
+same wrong answer for an ANDNOT operand swap). Add `__attribute__((optimize("no-tree-vectorize")))`
+to `eval_scalar`, then re-run benchmarks to establish the true scalar-vs-SIMD gap.
+
+**Chunk 2 — Loop unrolling (2x and 4x)**
+
+Process 2 or 4 YMM registers per iteration to reduce loop overhead and improve memory-level
+parallelism. The out-of-order engine gets more independent loads to schedule. New file:
+`src/query_eval_avx2_unroll.cpp`. Correctness validated via memcmp against scalar at three
+word counts (8192, 8195, 1).
+
+**Chunk 3 — Benchmark unrolled variants**
+
+Add unroll2/unroll4 to the benchmark harness. At 500M (DRAM-bound), unrolling reduces loop
+overhead but may not increase bandwidth — the interesting result may be at 1M (L3-resident)
+where compute matters. Either result demonstrates understanding of the roofline model.
+
+**Chunk 4 — Software prefetching**
+
+`_mm_prefetch` with `_MM_HINT_T0` to hide memory latency by overlapping computation with
+data fetch. Built on top of the best unrolled variant. Prefetch distance tuned empirically
+(8/16/32/64 words) since perf counters are unavailable on WSL2.
+
+**Chunk 5 — Popcount tiers for blog narrative**
+
+Benchmark three popcount implementations: naive bit-counting loop, `__builtin_popcountll`,
+and `_mm_popcnt_u64`. Self-contained comparison for the developer blog post.
+
+---
+
+## Week 3 — Memory and parallelism
+
+| Chunk | Deliverable | Status |
+|-------|-------------|--------|
+| TBD | Thread partitioning, NUMA-aware allocation, perf profiling on Akamai | ⬜ |
+
+---
+
+## Week 4 — Benchmarking and write-up
+
+| Chunk | Deliverable | Status |
+|-------|-------------|--------|
+| TBD | CRoaring/DuckDB comparison, roofline model, blog post, CI matrix | ⬜ |
