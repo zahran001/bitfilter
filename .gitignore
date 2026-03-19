@@ -31,11 +31,12 @@ _deps/
 *.exe
 *.out
 
-# Google Benchmark / test binaries
+# Google Benchmark / test binaries (built artifacts only, not source)
 bench_*
-test_*
 bitfilter_bench
 bitfilter_test
+build/test_*
+build-*/test_*
 
 # Editor / IDE
 .vscode/
