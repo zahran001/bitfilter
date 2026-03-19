@@ -80,3 +80,12 @@ target_link_libraries(bench
     benchmark::benchmark
     benchmark::benchmark_main
 )
+
+add_executable(bench_popcount
+    bench/bench_popcount.cpp
+)
+target_link_libraries(bench_popcount
+    bitfilter
+    benchmark::benchmark
+    benchmark::benchmark_main
+)

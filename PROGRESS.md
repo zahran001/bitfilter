@@ -31,7 +31,7 @@ AVX2 only 21% faster than scalar at 500M — likely because `-O3 -march=native` 
 | 2 | Loop unrolling — eval_avx2_unroll2 + eval_avx2_unroll4, correctness tests | ✅ Done |
 | 3 | Benchmark unrolled variants at all three sizes | ✅ Done |
 | 4 | Software prefetching — eval_avx2_prefetch, correctness test + benchmark | ✅ Done |
-| 5 | Popcount benchmark tiers — naive vs __builtin vs _mm_popcnt_u64 | ⬜ |
+| 5 | Popcount benchmark tiers — naive vs __builtin vs _mm_popcnt_u64 | ✅ Done |
 
 **Chunk 1 — Disable scalar auto-vectorization + re-baseline** ✅
 
@@ -82,10 +82,18 @@ AVX2 loop (best SIMD variant) with `_mm_prefetch(_MM_HINT_T0)` 16 words (128 byt
 At L3, it matches the best AVX2 result with the lowest variance (1.3% CV). This is the
 production-quality eval path.
 
-**Chunk 5 — Popcount tiers for blog narrative**
+**Chunk 5 — Popcount tiers for blog narrative** ✅
 
-Benchmark three popcount implementations: naive bit-counting loop, `__builtin_popcountll`,
-and `_mm_popcnt_u64`. Self-contained comparison for the developer blog post.
+Separate `bench_popcount` binary with three implementations at 500M users:
+
+| Tier | Implementation | Time | Throughput | Speedup |
+|------|---------------|------|------------|---------|
+| 1 | Naive (shift+mask loop) | 305 ms | 195 MB/s | baseline |
+| 2 | `__builtin_popcountll` | 5.5 ms | 10.5 GB/s | **55x** |
+| 3 | `_mm_popcnt_u64` | 5.3 ms | 10.9 GB/s | **57x** |
+
+Builtin and hardware are nearly identical — GCC with `-mpopcnt` lowers `__builtin_popcountll`
+to the same POPCNT instruction. The 57x gap from naive is the blog headline number.
 
 ---
 
