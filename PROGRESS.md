@@ -21,6 +21,14 @@
 
 AVX2 only 21% faster than scalar at 500M — likely because `-O3 -march=native` auto-vectorizes the scalar path.
 
+> **Post-hoc verification (2026-03-22):** The 7.5 GB/s scalar number was a
+> cold-CPU/thermal-throttle artifact, not a real measurement. Re-running the
+> auto-vectorized scalar (attribute removed) yields **18.0 GB/s median** at 500M —
+> matching the de-vectorized baseline. Assembly inspection confirmed GCC does
+> emit AVX2 (`ymm`/`vpand`) without `no-tree-vectorize`, but at DRAM scale the
+> CPU is memory-bound either way, so the instruction mix doesn't affect throughput.
+> See `docs/VERIFICATION.md` for the full procedure and decision matrix.
+
 ---
 
 ## Week 2 — AVX2 optimization and measurement

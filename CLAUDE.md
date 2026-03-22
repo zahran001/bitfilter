@@ -69,3 +69,6 @@ Refer to the plan.md file at the root.
 **Any change to scope, architecture, tooling, or decisions made during
 implementation must be reflected in plan.md immediately. plan.md is the
 single source of truth for this project. It does not drift from reality.**
+
+## Documentation
+The `docs/` folder at the project root contains supplementary project documentation.
