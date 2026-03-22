@@ -96,12 +96,12 @@ Separate `bench_popcount` binary with three implementations at 500M users:
 
 | Tier | Implementation | Time | Throughput | Speedup |
 |------|---------------|------|------------|---------|
-| 1 | Naive (shift+mask loop) | 305 ms | 195 MB/s | baseline |
-| 2 | `__builtin_popcountll` | 5.5 ms | 10.5 GB/s | **55x** |
-| 3 | `_mm_popcnt_u64` | 5.3 ms | 10.9 GB/s | **57x** |
+| 1 | Naive (shift+mask loop) | 212 ms | 281 MB/s | baseline |
+| 2 | `__builtin_popcountll` | 4.31 ms | 13.5 GB/s | **49x** |
+| 3 | `_mm_popcnt_u64` | 4.23 ms | 13.8 GB/s | **50x** |
 
 Builtin and hardware are nearly identical — GCC with `-mpopcnt` lowers `__builtin_popcountll`
-to the same POPCNT instruction. The 57x gap from naive is the blog headline number.
+to the same POPCNT instruction. The 50x gap from naive is the blog headline number.
 
 ---
 
