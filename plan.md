@@ -292,19 +292,23 @@ target_link_libraries(tests bitfilter GTest::gtest_main)
 
 - Implement `eval_avx2` with `_mm256_and_si256` + `_mm256_andnot_si256`
 - Validate correctness against scalar baseline
-- Measure first speedup — target ~3–4× over scalar
-- Experiment with loop unrolling (process 2–4 YMM registers per loop iteration)
-- Profile with `perf` to verify hitting memory bandwidth ceiling, not compute ceiling
-- Benchmark popcount tiers: naive loop → `__builtin_popcountll` → `_mm_popcnt_u64`
+- Disable scalar auto-vectorization (`no-tree-vectorize`) to establish true baseline
+- Experiment with loop unrolling (`eval_avx2_unroll2`, `eval_avx2_unroll4`) — found slower at DRAM scale due to register pressure
+- Add software prefetching: `eval_avx2_prefetch` with `_mm_prefetch((char*)(a + i + 16), _MM_HINT_T0)` — first SIMD variant to beat scalar at DRAM scale (18.2 vs 16.7 GB/s)
+- Benchmark popcount tiers: naive loop → `__builtin_popcountll` → `_mm_popcnt_u64` (50× speedup)
+- Key finding: workload is memory-bandwidth-bound, not compute-bound. Basic SIMD loses to scalar at 500M; only prefetching wins by hiding DRAM latency
 
-### Week 3 — Memory and parallelism
+### Week 3 — Threading and bandwidth saturation
 
-- Add software prefetching: `_mm_prefetch((char*)(a + i + 16), _MM_HINT_T0)`
-- Tune prefetch distance to measured L2/L3 latency on your machine
-- Implement NUMA-aware allocation with `numa_alloc_onnode()` for multi-socket awareness
-- Add thread partitioning: divide bitmap into N chunks, one thread per logical core
-- Use `std::atomic` for lock-free popcount reduction across threads
-- Measure scaling efficiency from 1 → 12 threads
+- Implement `eval_avx2_prefetch_mt()` using `std::jthread` (coarse-grained workload makes thread pools unnecessary)
+- Over-partition bitmap into `4 × n_threads` chunks with `std::atomic<size_t>` chunk index — handles P-core/E-core speed imbalance without detecting core types
+- Align all chunk boundaries to 8 words (64 bytes) to prevent false sharing
+- MT correctness test: `memcmp` multi-threaded result against single-threaded `eval_avx2_prefetch`
+- MT popcount: thread-local `alignas(64)` padded counters, main-thread reduction (no atomics needed)
+- Benchmark scaling curve: 1 / 2 / 4 / 8 / 12 threads at 500M users
+- Core-type experiment: P-cores only (2T) vs P-cores + HT (4T) vs all cores (12T)
+- Measure achieved GB/s vs theoretical DRAM bandwidth ceiling — goal is to show saturation
+- NUMA deferred: single-socket dev machine, not measurable. Add on Akamai multi-socket if available
 
 ### Week 4 — Benchmarking and write-up
 
@@ -341,14 +345,14 @@ BENCHMARK(BM_AVX2_Prefetch)->Unit(benchmark::kMillisecond);
 BENCHMARK(BM_AVX2_Parallel)->Threads(12)->Unit(benchmark::kMillisecond);
 ```
 
-Target results for a 3-segment query over 500M users:
+Measured results for a 3-segment query over 500M users (Week 2 actuals, then Week 3 target):
 
-| Implementation | Expected latency |
-| --- | --- |
-| Scalar | ~200 ms |
-| AVX2 | ~50 ms |
-| AVX2 + prefetch | ~35 ms |
-| AVX2 + prefetch + 12 threads | ~15 ms |
+| Implementation | Latency | Throughput | Status |
+| --- | --- | --- | --- |
+| Scalar (de-vectorized) | 13.9 ms | 16.7 GB/s | ✅ Measured |
+| AVX2 (1 register) | 18.6 ms | 12.6 GB/s | ✅ Measured — loses to scalar (DRAM-bound) |
+| AVX2 + prefetch | 12.8 ms | 18.2 GB/s | ✅ Measured — 1.09× over scalar |
+| AVX2 + prefetch + 12 threads | TBD | Target: near DRAM ceiling | ⬜ Week 3 |
 
 ---
 
@@ -371,7 +375,7 @@ Target results for a 3-segment query over 500M users:
 | CPU architecture (x86, ARM) | Dual path: AVX2 (x86) + ARM SVE (Grace) |
 | Memory subsystem (cache, DRAM) | 64B alignment, cache-line analysis, prefetch tuning |
 | SIMD / CPU intrinsics | `_mm256_and_si256`, `_mm256_andnot_si256`, `_mm_popcnt_u64`, `_mm_prefetch` |
-| Low-level parallel programming | Work-stealing partition scan, lock-free atomic reduction |
+| Low-level parallel programming | Over-partitioned chunk dispatch, cache-line-aligned boundaries, core-type scaling analysis |
 | Database / data-intensive workloads | Models ad audience segmentation engines directly |
 | Publish optimization techniques | Developer blog post + open-source GitHub repo |
 | Influence hardware design | Roofline model quantifies where future CPU improvements matter |
