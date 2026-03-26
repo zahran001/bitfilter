@@ -120,4 +120,46 @@ BENCHMARK_REGISTER_F(PopcountFixture, Hardware)
     ->Arg(500'000'000)
     ->Unit(benchmark::kMillisecond);
 
+// ── Multi-threaded popcount (ST vs 12-thread at 500M) ───────────────────────
+#include "query_eval.hpp"
+
+class MtPopcountFixture : public benchmark::Fixture {
+public:
+    void SetUp(const benchmark::State& state) override {
+        n_users_   = static_cast<size_t>(state.range(0));
+        n_threads_ = static_cast<unsigned>(state.range(1));
+        n_words_   = (n_users_ + 63) / 64;
+        bitmap_    = make_aligned_bitmap(n_words_);
+        fill_random(bitmap_.get(), n_words_, 0xDEAD'BEEF'CAFE'F00DULL);
+    }
+
+    void TearDown(const benchmark::State&) override {
+        bitmap_.reset();
+    }
+
+protected:
+    size_t   n_users_   = 0;
+    size_t   n_words_   = 0;
+    unsigned n_threads_ = 0;
+    AlignedBuffer bitmap_;
+};
+
+BENCHMARK_DEFINE_F(MtPopcountFixture, PopcountMT)(benchmark::State& state) {
+    for (auto _ : state) {
+        auto count = popcount_mt(bitmap_.get(), n_words_, n_threads_);
+        benchmark::DoNotOptimize(count);
+    }
+    state.SetBytesProcessed(
+        static_cast<int64_t>(state.iterations()) *
+        static_cast<int64_t>(n_words_) * 8);
+}
+
+BENCHMARK_REGISTER_F(MtPopcountFixture, PopcountMT)
+    ->Args({500'000'000, 1})
+    ->Args({500'000'000, 2})
+    ->Args({500'000'000, 4})
+    ->Args({500'000'000, 8})
+    ->Args({500'000'000, 12})
+    ->Unit(benchmark::kMillisecond);
+
 // main() provided by benchmark::benchmark_main

@@ -52,6 +52,7 @@ add_library(bitfilter STATIC
     src/query_eval_avx2.cpp
     src/query_eval_avx2_unroll.cpp
     src/query_eval_avx2_prefetch.cpp
+    src/query_eval_mt.cpp
 )
 target_include_directories(bitfilter PUBLIC include)
 

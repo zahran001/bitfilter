@@ -105,11 +105,81 @@ to the same POPCNT instruction. The 50x gap from naive is the blog headline numb
 
 ---
 
-## Week 3 — Memory and parallelism
+## Week 3 — Threading and bandwidth saturation
 
 | Chunk | Deliverable | Status |
 |-------|-------------|--------|
-| TBD | Thread partitioning, NUMA-aware allocation, perf profiling on Akamai | ⬜ |
+| 1 | `eval_avx2_prefetch_mt()` — over-partitioned chunk dispatch with `std::jthread` | ✅ Done |
+| 2 | MT correctness tests — 12 eval + 12 popcount (40 total tests passing) | ✅ Done |
+| 3 | MT eval benchmark — scaling curve at 1/2/4/8/12 threads, 500M users | ✅ Done |
+| 4 | `popcount_mt()` with thread-local padded counters + benchmark | ✅ Done |
+| 5 | Analysis and results documentation | ✅ Done |
+
+**Hardware reference (CPU-Z verified):**
+- DDR4-2660, dual-channel, CL19-19-19-43 @ 2T
+- Theoretical peak: 42.6 GB/s
+- Practical ceiling (mixed read/write): ~30-35 GB/s
+
+**Chunk 1 — `eval_avx2_prefetch_mt()` implementation** ✅
+
+New `src/query_eval_mt.cpp` with over-partitioned chunk dispatch:
+- `4 × n_threads` chunks, cache-line aligned (8 words = 64 bytes)
+- Dynamic load balancing via `std::atomic<unsigned> fetch_add(relaxed)`
+- P-cores grab more chunks than E-cores automatically
+- `std::jthread` (spawn per call, join on scope exit)
+- Main thread participates as worker
+- Fallback to single-threaded for `n_threads <= 1` or degenerate sizes
+
+**Chunk 2 — MT correctness tests** ✅
+
+24 new parametrized tests (12 eval + 12 popcount):
+- Thread counts: {1, 2, 4, 12} × word counts: {8192, 8195, 1}
+- Eval: `memcmp(result_st, result_mt) == 0`
+- Popcount: `popcount_mt() == popcount()`
+- All 40 tests passing.
+
+**Chunks 3+4 — MT benchmarks and results** ✅
+
+Eval scaling curve at 500M users (wall time / throughput):
+
+| Threads | Wall time | Throughput (GiB/s) | Throughput (GB/s) | Speedup vs 1T |
+|---------|-----------|-------------------|-------------------|---------------|
+| 1 (ST) | 13.3 ms | 18.4 GiB/s | 19.8 GB/s | 1.00x |
+| 2 | 10.9 ms | 22.8 GiB/s | 24.5 GB/s | 1.22x |
+| 4 | 11.2 ms | 23.6 GiB/s | 25.3 GB/s | 1.19x |
+| 8 | 11.5 ms | 22.6 GiB/s | 24.3 GB/s | 1.16x |
+| 12 | 11.8 ms | 21.8 GiB/s | 23.4 GB/s | 1.13x |
+
+**Analysis:** Scaling peaks at 2 threads and regresses slightly beyond that. This is the
+expected behavior for a memory-bandwidth-bound workload on a single memory controller —
+2 threads are enough to saturate the memory bus. Additional threads add contention
+(atomic fetch_add, memory controller queue depth) without increasing bandwidth.
+
+The peak throughput of ~25 GB/s at 2 threads represents **59% of the 42.6 GB/s theoretical
+peak**. The gap is explained by: mixed read/write traffic (3 reads + 1 write per operation),
+memory controller scheduling overhead, and WSL2 virtualization overhead.
+
+Popcount MT scaling at 500M users:
+
+| Threads | Wall time | Throughput (GiB/s) | Throughput (GB/s) | Speedup vs 1T |
+|---------|-----------|-------------------|-------------------|---------------|
+| 1 (ST) | 4.83 ms | 12.7 GiB/s | 13.6 GB/s | 1.00x |
+| 2 | 2.72 ms | 23.6 GiB/s | 25.3 GB/s | 1.78x |
+| 4 | 2.59 ms | 25.9 GiB/s | 27.8 GB/s | 1.86x |
+| 8 | 2.54 ms | 27.2 GiB/s | 29.2 GB/s | 1.90x |
+| 12 | 2.47 ms | 28.6 GiB/s | 30.7 GB/s | 1.96x |
+
+**Analysis:** Popcount scales better than eval because it's read-only (no write traffic).
+At 12 threads, 30.7 GB/s achieves **72% of theoretical peak** — significantly better than
+eval's 59%. The read-only workload is friendlier to the memory controller since there's
+no read/write bus turnaround penalty.
+
+**Key takeaways:**
+1. Memory bandwidth saturates quickly — 2 threads for eval, ~4 for popcount
+2. The eval workload's mixed read/write traffic limits scaling more than popcount's read-only pattern
+3. Peak measured bandwidth (30.7 GB/s popcount) is within the expected practical ceiling (~30-35 GB/s)
+4. Over-partitioning works as designed — P/E core imbalance is handled automatically
+5. `std::jthread` spawn overhead (~50μs) is negligible at 500M scale (10+ ms per call)
 
 ---
 

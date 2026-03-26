@@ -213,3 +213,104 @@ INSTANTIATE_TEST_SUITE_P(
                std::to_string(info.param.n_words);
     }
 );
+
+// ── Test 6: eval_avx2_prefetch_mt matches single-threaded eval (bit-exact) ──
+//
+// The MT wrapper must produce identical output to the single-threaded kernel
+// for every thread count and word count combination.
+//
+// Thread counts: 1 (fallback path), 2, 4, 12 (all logical cores)
+// Word counts:   8192 (aligned), 8195 (remainder), 1 (degenerate)
+
+struct MtEvalTestParam {
+    size_t   n_words;
+    unsigned n_threads;
+};
+
+class MtEvalCorrectness : public ::testing::TestWithParam<MtEvalTestParam> {};
+
+TEST_P(MtEvalCorrectness, MatchesSingleThreaded) {
+    const auto& [n_words, n_threads] = GetParam();
+
+    AlignedBuffer a         = make_aligned_bitmap(n_words);
+    AlignedBuffer b         = make_aligned_bitmap(n_words);
+    AlignedBuffer not_c     = make_aligned_bitmap(n_words);
+    AlignedBuffer result_st = make_aligned_bitmap(n_words);
+    AlignedBuffer result_mt = make_aligned_bitmap(n_words);
+
+    fill_random_bitmap(a.get(),     n_words, 0xAAAA'AAAA'AAAA'AAAAULL);
+    fill_random_bitmap(b.get(),     n_words, 0xBBBB'BBBB'BBBB'BBBBULL);
+    fill_random_bitmap(not_c.get(), n_words, 0xCCCC'CCCC'CCCC'CCCCULL);
+
+    std::memset(result_st.get(), 0, n_words * sizeof(uint64_t));
+    std::memset(result_mt.get(), 0, n_words * sizeof(uint64_t));
+
+    eval_avx2_prefetch(a.get(), b.get(), not_c.get(), result_st.get(), n_words);
+    eval_avx2_prefetch_mt(a.get(), b.get(), not_c.get(), result_mt.get(),
+                          n_words, n_threads);
+
+    EXPECT_EQ(std::memcmp(result_st.get(), result_mt.get(),
+                          n_words * sizeof(uint64_t)), 0)
+        << "MT output differs from single-threaded at n_words=" << n_words
+        << ", n_threads=" << n_threads;
+}
+
+static std::vector<MtEvalTestParam> MakeMtEvalParams() {
+    std::vector<MtEvalTestParam> params;
+    for (size_t n : {8192, 8195, 1})
+        for (unsigned t : {1u, 2u, 4u, 12u})
+            params.push_back({n, t});
+    return params;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MtVariants,
+    MtEvalCorrectness,
+    ::testing::ValuesIn(MakeMtEvalParams()),
+    [](const ::testing::TestParamInfo<MtEvalTestParam>& info) {
+        return "n" + std::to_string(info.param.n_words) +
+               "_t" + std::to_string(info.param.n_threads);
+    }
+);
+
+// ── Test 7: popcount_mt matches single-threaded popcount (exact) ────────────
+
+struct MtPopcountTestParam {
+    size_t   n_words;
+    unsigned n_threads;
+};
+
+class MtPopcountCorrectness : public ::testing::TestWithParam<MtPopcountTestParam> {};
+
+TEST_P(MtPopcountCorrectness, MatchesSingleThreaded) {
+    const auto& [n_words, n_threads] = GetParam();
+
+    AlignedBuffer bm = make_aligned_bitmap(n_words);
+    fill_random_bitmap(bm.get(), n_words, 0xDDDD'DDDD'DDDD'DDDDULL);
+
+    uint64_t expected = popcount(bm.get(), n_words);
+    uint64_t actual   = popcount_mt(bm.get(), n_words, n_threads);
+
+    EXPECT_EQ(actual, expected)
+        << "popcount_mt differs at n_words=" << n_words
+        << ", n_threads=" << n_threads
+        << " (expected=" << expected << ", got=" << actual << ")";
+}
+
+static std::vector<MtPopcountTestParam> MakeMtPopcountParams() {
+    std::vector<MtPopcountTestParam> params;
+    for (size_t n : {8192, 8195, 1})
+        for (unsigned t : {1u, 2u, 4u, 12u})
+            params.push_back({n, t});
+    return params;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MtPopcountVariants,
+    MtPopcountCorrectness,
+    ::testing::ValuesIn(MakeMtPopcountParams()),
+    [](const ::testing::TestParamInfo<MtPopcountTestParam>& info) {
+        return "n" + std::to_string(info.param.n_words) +
+               "_t" + std::to_string(info.param.n_threads);
+    }
+);

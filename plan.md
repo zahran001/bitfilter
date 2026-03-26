@@ -349,10 +349,12 @@ Measured results for a 3-segment query over 500M users (Week 2 actuals, then Wee
 
 | Implementation | Latency | Throughput | Status |
 | --- | --- | --- | --- |
-| Scalar (de-vectorized) | 13.9 ms | 16.7 GB/s | ✅ Measured |
-| AVX2 (1 register) | 18.6 ms | 12.6 GB/s | ✅ Measured — loses to scalar (DRAM-bound) |
-| AVX2 + prefetch | 12.8 ms | 18.2 GB/s | ✅ Measured — 1.09× over scalar |
-| AVX2 + prefetch + 12 threads | TBD | Target: near DRAM ceiling | ⬜ Week 3 |
+| Scalar (de-vectorized) | 13.9 ms | 16.7 GB/s | ✅ Measured (W2) |
+| AVX2 (1 register) | 18.6 ms | 12.6 GB/s | ✅ Measured (W2) — loses to scalar (DRAM-bound) |
+| AVX2 + prefetch | 12.8 ms | 18.2 GB/s | ✅ Measured (W2) — 1.09× over scalar |
+| AVX2 + prefetch + 2 threads | 10.9 ms | 24.5 GB/s | ✅ Measured (W3) — peak eval scaling |
+| AVX2 + prefetch + 12 threads | 11.8 ms | 23.4 GB/s | ✅ Measured (W3) — bus saturated at 2T |
+| Popcount MT (12 threads) | 2.47 ms | 30.7 GB/s | ✅ Measured (W3) — 72% of theoretical peak |
 
 ---
 

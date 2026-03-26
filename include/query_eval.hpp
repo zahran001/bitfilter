@@ -44,6 +44,18 @@ void eval_avx2_unroll4(
           uint64_t* __restrict__ result,
     size_t n_words);
 
+// Multi-threaded AVX2+prefetch — over-partitioned chunk dispatch across threads.
+void eval_avx2_prefetch_mt(
+    const uint64_t* __restrict__ a,
+    const uint64_t* __restrict__ b,
+    const uint64_t* __restrict__ not_c,
+          uint64_t* __restrict__ result,
+    size_t n_words,
+    unsigned n_threads);
+
+// Multi-threaded popcount with thread-local padded reduction.
+uint64_t popcount_mt(const uint64_t* bitmap, size_t n_words, unsigned n_threads);
+
 // Hardware popcount using _mm_popcnt_u64.
 // Counts set bits across all n_words words.
 // Padding bits (positions [n_users .. n_words*64)) are guaranteed zero
