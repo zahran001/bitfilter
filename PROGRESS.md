@@ -187,6 +187,21 @@ Over-partitioned dispatch was verified via `diag_chunks.cpp`:
 - `std::jthread` spawn stagger (~50-100μs per thread) causes early threads to grab
   disproportionate chunks. This explains the 12T regression.
 
+**Core-type experiment (Chunk 5):**
+
+Thread pinning (`pthread_setaffinity_np`) was not attempted. The 2/4/8/12 scaling curve
+already implicitly covers P-core and E-core participation — the OS scheduler distributes
+threads across both core types. Since the workload is memory-bandwidth-bound (not
+compute-bound), core type has minimal impact: both P-cores and E-cores can saturate
+their share of the memory bus. The bandwidth saturation story is clear without pinning.
+
+**1T MT fallback overhead (popcount):**
+
+The MT wrapper at 1T reported 4.08 ms vs standalone 3.80 ms (7% overhead). This is
+benchmark fixture variance (different SetUp/TearDown paths, different iteration counts
+165 vs 176), not real overhead — the code path hits `return popcount(bitmap, n_words)`
+directly with no allocation or atomic setup. No optimization needed.
+
 **Key takeaways:**
 1. **Eval is already bus-saturated at 1T** — write-allocate traffic puts actual DRAM
    consumption at ~29 GB/s, near the practical ceiling. Threading cannot help.

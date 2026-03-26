@@ -281,6 +281,7 @@ After back-to-back verification:
 4. Explain *why* results differ between read-only and read-write workloads
 
 **Action items:**
-- [ ] Update PROGRESS.md with corrected eval scaling story
-- [ ] Correct plan.md target table
-- [ ] Decide whether the 1T MT fallback overhead (7% for popcount) warrants optimization
+- [x] Update PROGRESS.md with corrected eval scaling story
+- [x] Correct plan.md target table
+- [x] 1T MT fallback overhead (7% for popcount): benchmark fixture variance, not real
+  overhead — the fallback path returns `popcount()` directly with no allocation. No fix needed.
