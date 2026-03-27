@@ -22,11 +22,11 @@ are nearly full and compression adds overhead. CRoaring wins at very low density
 (<0.1%) where most containers compress to run-length or array form.
 
 **Steps:**
-- [ ] Add CRoaring v4.x via CMake FetchContent (source build with `-march=native`)
-- [ ] Write `bench/bench_croaring.cpp`: same A AND B AND NOT C query at 500M users
-- [ ] Run at multiple densities: 0.01%, 0.1%, 1%, 10%, 50%
-- [ ] Record latency and throughput for both engines at each density
-- [ ] Add CRoaring benchmark target to CMakeLists.txt
+- [x] Add CRoaring v4.6.1 via CMake FetchContent (source build with `-march=native`)
+- [x] Write `bench/bench_croaring.cpp`: same A AND B AND NOT C query at 500M users
+- [x] Run at multiple densities: 0.01%, 0.1%, 1%, 10%, 50%
+- [x] Record latency and throughput for both engines at each density → see `docs/WEEK4_CROARING.md`
+- [x] Add CRoaring benchmark target to CMakeLists.txt
 
 ### D2: DuckDB comparative benchmark
 

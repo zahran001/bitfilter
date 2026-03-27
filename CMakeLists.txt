@@ -38,12 +38,22 @@ FetchContent_Declare(
     GIT_TAG        v1.8.4
 )
 
+FetchContent_Declare(
+    croaring
+    GIT_REPOSITORY https://github.com/RoaringBitmap/CRoaring.git
+    GIT_TAG        v4.6.1
+)
+
 # Don't let benchmark pull in its own copy of gtest and shadow ours
 set(BENCHMARK_ENABLE_TESTING     OFF CACHE BOOL "" FORCE)
 set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
 set(gtest_force_shared_crt       ON  CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(googletest benchmark)
+# CRoaring: disable extras we don't need
+set(ROARING_BUILD_LTO            OFF CACHE BOOL "" FORCE)
+set(ENABLE_ROARING_TESTS         OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(googletest benchmark croaring)
 
 # ── Core library ──────────────────────────────────────────────────────────────
 add_library(bitfilter STATIC
@@ -87,6 +97,17 @@ add_executable(bench_popcount
 )
 target_link_libraries(bench_popcount
     bitfilter
+    benchmark::benchmark
+    benchmark::benchmark_main
+)
+
+# ── CRoaring comparative benchmark ──────────────────────────────────────────
+add_executable(bench_croaring
+    bench/bench_croaring.cpp
+)
+target_link_libraries(bench_croaring
+    bitfilter
+    roaring
     benchmark::benchmark
     benchmark::benchmark_main
 )
