@@ -101,6 +101,29 @@ target_link_libraries(bench_popcount
     benchmark::benchmark_main
 )
 
+# ── DuckDB comparative benchmark ───────────────────────────────────────────
+# Uses prebuilt libduckdb.so (v1.5.1) — the 25 MB amalgamation source OOMs
+# during compilation on machines with <12 GB RAM.
+# One-liner to fetch:
+#   mkdir -p bench/duckdb && curl -sL https://github.com/duckdb/duckdb/releases/download/v1.5.1/libduckdb-linux-amd64.zip | python3 -c "import sys,zipfile,io; z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); [z.extract(f,'bench/duckdb/') for f in ('duckdb.hpp','libduckdb.so')]"
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/duckdb/libduckdb.so")
+    # Import prebuilt shared library
+    add_library(duckdb SHARED IMPORTED)
+    set_target_properties(duckdb PROPERTIES
+        IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/bench/duckdb/libduckdb.so"
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/bench/duckdb"
+    )
+
+    add_executable(bench_duckdb bench/bench_duckdb.cpp)
+    target_include_directories(bench_duckdb PRIVATE bench/duckdb)
+    target_link_libraries(bench_duckdb
+        bitfilter
+        duckdb
+        benchmark::benchmark
+        benchmark::benchmark_main
+    )
+endif()
+
 # ── CRoaring comparative benchmark ──────────────────────────────────────────
 add_executable(bench_croaring
     bench/bench_croaring.cpp

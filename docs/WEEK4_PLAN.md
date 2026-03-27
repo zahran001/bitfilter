@@ -34,12 +34,12 @@ are nearly full and compression adds overhead. CRoaring wins at very low density
 shows the overhead of a general-purpose query engine vs a purpose-built bitmap engine.
 
 **Steps:**
-- [ ] Download DuckDB C++ amalgamation (`duckdb.hpp` + `duckdb.cpp`) into `bench/`
-- [ ] Write `bench/bench_duckdb.cpp`: create in-memory table with boolean columns
+- [x] ~~Download DuckDB C++ amalgamation~~ Use prebuilt `libduckdb.so` v1.5.1 (amalgamation OOMs at <12 GB RAM)
+- [x] Write `bench/bench_duckdb.cpp`: create in-memory table with boolean columns
       a, b, c for 500M rows, run `SELECT COUNT(*) WHERE a AND b AND NOT c`
-- [ ] Record query time at 10% and 50% density
-- [ ] Add DuckDB benchmark target to CMakeLists.txt (long compile — separate target)
-- [ ] Note: DuckDB uses its own SIMD internally — the point is abstraction overhead
+- [x] Record query time at 10% and 50% density → see `docs/WEEK4_DUCKDB.md`
+- [x] Add DuckDB benchmark target to CMakeLists.txt (prebuilt .so — no long compile)
+- [x] Note: DuckDB uses its own SIMD internally — the point is abstraction overhead
 
 ### D3: SQLite comparative benchmark
 
@@ -139,7 +139,7 @@ Phase 3 — Publishing (can parallelize)
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | CRoaring | CMake FetchContent (source build, v4.x) | apt versions are often outdated and compiled with generic flags. Source build ensures CRoaring uses the same `-march=native` AVX2 optimizations. Shows dependency management skill. |
-| DuckDB | C++ API (`duckdb.hpp` amalgamation) | Apples-to-apples comparison — no Python interpreter overhead. Keeps the project pure C++. Drop `duckdb.hpp` + `duckdb.cpp` into `bench/`. |
+| DuckDB | C++ API (prebuilt `libduckdb.so` v1.5.1) | Apples-to-apples comparison — no Python interpreter overhead. Keeps the project pure C++. Prebuilt .so instead of amalgamation source: the 25 MB `duckdb.cpp` OOMs at `-O3` on machines with <12 GB RAM. |
 | SQLite scale | 50M rows + extrapolation | 500M rows in a row-store tests SSD I/O, not database logic. ~40-60 GB disk, hours to load. Representative sub-sample is the industry-standard approach. Hook: "SQLite took 4 min for 50M; BitFilter took 11 ms for 500M." |
 | GitHub Pages | Plain HTML + Pico.css (classless CSS) | Zero-dependency site mirrors the project philosophy — no bloat. Easier to embed interactive charts (Chart.js/D3) than fighting Jekyll's Liquid templates. |
 | Roofline chart | Python matplotlib | Reproducible from script, export SVG/PNG for the site. |

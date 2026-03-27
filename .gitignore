@@ -36,6 +36,9 @@ _deps/
 /bitfilter_bench
 /bitfilter_test
 
+# DuckDB amalgamation (25 MB vendored source — downloaded at build time)
+bench/duckdb/
+
 # Editor / IDE
 .vscode/
 .idea/
