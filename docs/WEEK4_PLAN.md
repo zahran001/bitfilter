@@ -73,10 +73,11 @@ Hardware ceilings:
 - Compute peak: far above anything this workload needs
 
 **Steps:**
-- [ ] Write a Python script (`scripts/roofline.py`) to generate the roofline chart
-- [ ] Plot all variants as points on the chart
-- [ ] Export as SVG/PNG for the GitHub Pages site
-- [ ] Include write-allocate annotation (why eval's actual BW is higher than reported)
+- [x] Write a Python script (`scripts/roofline.py`) to generate the roofline chart
+- [x] Plot all variants as points on the chart
+- [x] Export as SVG/PNG for the GitHub Pages site
+- [x] Include write-allocate annotation (why eval's actual BW is higher than reported)
+- [x] Write detailed analysis doc → see `docs/WEEK4_ROOFLINE.md`
 
 ### D5: GitHub Actions CI
 
