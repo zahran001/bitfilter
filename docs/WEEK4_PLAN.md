@@ -47,10 +47,11 @@ shows the overhead of a general-purpose query engine vs a purpose-built bitmap e
 the cost of row-by-row evaluation at scale.
 
 **Steps:**
-- [ ] Write `bench/bench_sqlite.cpp` using SQLite C API: create in-memory table,
-      populate 50M rows, run the equivalent boolean query
-- [ ] Record query time, extrapolate to 500M (linear scaling for full-table scan)
-- [ ] Site hook: "SQLite took X min for 50M; BitFilter took 11 ms for 500M"
+- [x] Write `bench/bench_sqlite.cpp` using SQLite C API: scaling sweep at 5M/10M/50M
+      rows with BitFilter at matching scale points, run equivalent boolean query
+- [x] Record query time, extrapolate to 500M (linear scaling confirmed) → see `docs/WEEK4_SQLITE.md`
+- [x] Site hook: "SQLite took 20 sec for 500M; BitFilter took 11 ms for 500M"
+- [x] Add SQLite benchmark target to CMakeLists.txt
 
 ### D4: Roofline model
 

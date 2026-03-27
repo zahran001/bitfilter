@@ -134,3 +134,16 @@ target_link_libraries(bench_croaring
     benchmark::benchmark
     benchmark::benchmark_main
 )
+
+# ── SQLite comparative benchmark ───────────────────────────────────────────
+# Requires libsqlite3-dev: sudo apt-get install -y libsqlite3-dev
+find_package(SQLite3)
+if(SQLite3_FOUND)
+    add_executable(bench_sqlite bench/bench_sqlite.cpp)
+    target_link_libraries(bench_sqlite
+        bitfilter
+        SQLite::SQLite3
+        benchmark::benchmark
+        benchmark::benchmark_main
+    )
+endif()
