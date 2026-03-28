@@ -84,13 +84,16 @@ Hardware ceilings:
 **Why:** Proves the code builds and passes tests on both target architectures.
 
 **Steps:**
-- [ ] Create `.github/workflows/ci.yml`
-- [ ] x86 job: `ubuntu-latest`, install deps, cmake build, run `test_correctness`
-- [ ] ARM job: `ubuntu-latest` on ARM runner (or cross-compile + QEMU), build with
-      SVE flags, run tests
-- [ ] ARM SVE: implement `eval_sve` in `src/query_eval_sve.cpp` using
-      `svand_u64_z` / `svbic_u64_z` — enough for CI to compile and pass correctness
-- [ ] Badge in repo README
+- [x] Create `.github/workflows/ci.yml`
+- [x] x86 job: `ubuntu-latest`, install deps, cmake build, run `test_correctness`
+- [x] ARM job: cross-compile with `aarch64-linux-gnu-g++` + QEMU user-mode (`qemu-aarch64 -cpu max`)
+      for SVE emulation — GitHub's ARM runners (Ampere Altra) lack SVE hardware
+- [x] ARM SVE: implement `eval_sve` in `src/query_eval_sve.cpp` using
+      `svand_u64_z` / `svbic_u64_z` with `svwhilelt` predication — no scalar tail needed
+- [x] Badge in repo README
+- [x] Refactored CMakeLists.txt: architecture-conditional flags, sources, and dependencies
+- [x] Guarded `query_eval.hpp` with `#ifdef __x86_64__` / `#ifdef __ARM_FEATURE_SVE`
+- [x] Added portable `popcount()` fallback using `__builtin_popcountll` on non-x86
 
 ### D6: GitHub Pages site
 
@@ -145,13 +148,14 @@ Phase 3 — Publishing (can parallelize)
 | SQLite scale | 50M rows + extrapolation | 500M rows in a row-store tests SSD I/O, not database logic. ~40-60 GB disk, hours to load. Representative sub-sample is the industry-standard approach. Hook: "SQLite took 4 min for 50M; BitFilter took 11 ms for 500M." |
 | GitHub Pages | Plain HTML + Pico.css (classless CSS) | Zero-dependency site mirrors the project philosophy — no bloat. Easier to embed interactive charts (Chart.js/D3) than fighting Jekyll's Liquid templates. |
 | Roofline chart | Python matplotlib | Reproducible from script, export SVG/PNG for the site. |
+| ARM CI | Cross-compile + QEMU (not native ARM runner) | GitHub's ARM runners use Ampere Altra (ARMv8.2, no SVE). Cross-compile with `aarch64-linux-gnu-g++` and run via `qemu-aarch64 -cpu max` which emulates SVE. Proves SVE correctness without requiring SVE hardware. |
 
 ---
 
 ## Definition of done
 
-- [ ] CRoaring, DuckDB, SQLite numbers collected and recorded
-- [ ] Roofline chart generated with all variants plotted
+- [x] CRoaring, DuckDB, SQLite numbers collected and recorded
+- [x] Roofline chart generated with all variants plotted
 - [ ] CI green on both x86 and ARM
 - [ ] GitHub Pages site live with full narrative + charts
 - [ ] plan.md updated to reflect final Week 4 outcomes

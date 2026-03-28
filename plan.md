@@ -316,7 +316,9 @@ target_link_libraries(tests bitfilter GTest::gtest_main)
 - Benchmark against DuckDB and SQLite for equivalent queries
 - Build roofline model: plot achieved GB/s vs theoretical memory bandwidth ceiling
 - Write developer blog post (problem → measurement → optimization → result)
-- Publish GitHub repo with CI matrix: `ubuntu-latest` (x86 AVX2) + ARM runner (SVE)
+- Publish GitHub repo with CI matrix: x86 AVX2 (`ubuntu-latest`) + ARM SVE (cross-compile + QEMU)
+- Implement `eval_sve` using `svand_u64_z` / `svbic_u64_z` with `svwhilelt` predication
+- Refactor CMakeLists.txt for architecture-conditional compilation (x86 vs ARM sources/flags)
 
 ---
 

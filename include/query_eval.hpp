@@ -1,7 +1,10 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+
+#ifdef __x86_64__
 #include <nmmintrin.h>  // _mm_popcnt_u64 (SSE4.2 / BMI2 — confirmed on this machine)
+#endif
 
 // Scalar baseline — correctness reference, not a performance target.
 // Do NOT add optimisation hints; the compiler must not auto-vectorise this.
@@ -12,6 +15,7 @@ void eval_scalar(
           uint64_t* __restrict__ result,
     size_t n_words);
 
+#ifdef __x86_64__
 // AVX2 primary path — 256-bit YMM registers, 4 × uint64_t per iteration.
 void eval_avx2(
     const uint64_t* __restrict__ a,
@@ -55,14 +59,29 @@ void eval_avx2_prefetch_mt(
 
 // Multi-threaded popcount with thread-local padded reduction.
 uint64_t popcount_mt(const uint64_t* bitmap, size_t n_words, unsigned n_threads);
+#endif // __x86_64__
 
-// Hardware popcount using _mm_popcnt_u64.
+#ifdef __ARM_FEATURE_SVE
+// ARM SVE path — scalable vector length, predicated loops.
+void eval_sve(
+    const uint64_t* __restrict__ a,
+    const uint64_t* __restrict__ b,
+    const uint64_t* __restrict__ not_c,
+          uint64_t* __restrict__ result,
+    size_t n_words);
+#endif // __ARM_FEATURE_SVE
+
+// Hardware popcount — uses POPCNT on x86, __builtin_popcountll elsewhere.
 // Counts set bits across all n_words words.
 // Padding bits (positions [n_users .. n_words*64)) are guaranteed zero
 // by SegmentStore, so no masking of the last word is needed.
 inline uint64_t popcount(const uint64_t* bitmap, size_t n_words) noexcept {
     uint64_t total = 0;
     for (size_t i = 0; i < n_words; ++i)
+#ifdef __x86_64__
         total += _mm_popcnt_u64(bitmap[i]);
+#else
+        total += __builtin_popcountll(bitmap[i]);
+#endif
     return total;
 }

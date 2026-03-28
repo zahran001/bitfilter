@@ -118,6 +118,19 @@ TEST(SegmentStore, DuplicateSegmentThrows) {
         << "Adding a duplicate segment name must throw std::invalid_argument";
 }
 
+// Helper: fill an aligned bitmap with random bits (per-bit bernoulli, density 0.5).
+static void fill_random_bitmap(uint64_t* words, size_t n_words, uint64_t seed) {
+    std::mt19937_64 rng(seed);
+    std::bernoulli_distribution dist(0.5);
+    for (size_t w = 0; w < n_words; ++w) {
+        uint64_t word = 0;
+        for (int b = 0; b < 64; ++b)
+            if (dist(rng)) word |= (UINT64_C(1) << b);
+        words[w] = word;
+    }
+}
+
+#ifdef __x86_64__
 // ── Test 5: all AVX2 variants match eval_scalar (bit-exact) ──────────────────
 //
 // The scalar path is the correctness reference. Every AVX2 variant must produce
@@ -130,18 +143,6 @@ TEST(SegmentStore, DuplicateSegmentThrows) {
 //
 // Each test generates three input bitmaps (a, b, not_c) with independent seeds,
 // runs eval_scalar and one AVX2 variant, and asserts memcmp == 0.
-
-// Helper: fill an aligned bitmap with random bits (per-bit bernoulli, density 0.5).
-static void fill_random_bitmap(uint64_t* words, size_t n_words, uint64_t seed) {
-    std::mt19937_64 rng(seed);
-    std::bernoulli_distribution dist(0.5);
-    for (size_t w = 0; w < n_words; ++w) {
-        uint64_t word = 0;
-        for (int b = 0; b < 64; ++b)
-            if (dist(rng)) word |= (UINT64_C(1) << b);
-        words[w] = word;
-    }
-}
 
 // Function pointer type for all eval variants.
 using EvalFn = void(*)(
@@ -314,3 +315,43 @@ INSTANTIATE_TEST_SUITE_P(
                "_t" + std::to_string(info.param.n_threads);
     }
 );
+#endif // __x86_64__
+
+// ── Test: ARM SVE eval matches eval_scalar (bit-exact) ──────────────────────
+#ifdef __ARM_FEATURE_SVE
+
+class SveEvalCorrectness : public ::testing::TestWithParam<size_t> {};
+
+TEST_P(SveEvalCorrectness, MatchesScalar) {
+    const size_t n_words = GetParam();
+
+    AlignedBuffer a              = make_aligned_bitmap(n_words);
+    AlignedBuffer b              = make_aligned_bitmap(n_words);
+    AlignedBuffer not_c          = make_aligned_bitmap(n_words);
+    AlignedBuffer result_scalar  = make_aligned_bitmap(n_words);
+    AlignedBuffer result_sve     = make_aligned_bitmap(n_words);
+
+    fill_random_bitmap(a.get(),     n_words, 0xAAAA'AAAA'AAAA'AAAAULL);
+    fill_random_bitmap(b.get(),     n_words, 0xBBBB'BBBB'BBBB'BBBBULL);
+    fill_random_bitmap(not_c.get(), n_words, 0xCCCC'CCCC'CCCC'CCCCULL);
+
+    std::memset(result_scalar.get(), 0, n_words * sizeof(uint64_t));
+    std::memset(result_sve.get(),    0, n_words * sizeof(uint64_t));
+
+    eval_scalar(a.get(), b.get(), not_c.get(), result_scalar.get(), n_words);
+    eval_sve   (a.get(), b.get(), not_c.get(), result_sve.get(),    n_words);
+
+    EXPECT_EQ(std::memcmp(result_scalar.get(), result_sve.get(),
+                          n_words * sizeof(uint64_t)), 0)
+        << "eval_sve output differs from eval_scalar at n_words=" << n_words;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SveVariants,
+    SveEvalCorrectness,
+    ::testing::Values(8192, 8195, 1),
+    [](const ::testing::TestParamInfo<size_t>& info) {
+        return "n" + std::to_string(info.param);
+    }
+);
+#endif // __ARM_FEATURE_SVE
