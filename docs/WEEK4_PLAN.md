@@ -103,21 +103,21 @@ Readers can see charts, code snippets, and the narrative without cloning the rep
 **Narrative arc:** Problem → Measurement → Optimization → Result
 
 **Sections:**
-- [ ] The problem: audience segmentation at 500M users
-- [ ] Why bitmaps: memory layout, cache lines, mechanical sympathy
-- [ ] Scalar baseline and the auto-vectorization surprise
-- [ ] AVX2: why naive SIMD lost, and how prefetching won
-- [ ] Threading: write-allocate and why eval can't scale but popcount can
-- [ ] Catching misleading benchmarks (the cold-baseline artifact)
-- [ ] Comparative benchmarks: BitFilter vs CRoaring vs DuckDB vs SQLite
-- [ ] Roofline model
-- [ ] What this means for CPU architecture (the NVIDIA angle)
+- [x] The problem: audience segmentation at 500M users
+- [x] Why bitmaps: memory layout, cache lines, mechanical sympathy
+- [x] Scalar baseline and the auto-vectorization surprise
+- [x] AVX2: why naive SIMD lost, and how prefetching won
+- [x] Threading: write-allocate and why eval can't scale but popcount can
+- [x] Catching misleading benchmarks (the cold-baseline artifact)
+- [x] Comparative benchmarks: BitFilter vs CRoaring vs DuckDB vs SQLite
+- [x] Roofline model
+- [x] What this means for CPU architecture (the NVIDIA angle)
 
 **Steps:**
-- [ ] Set up `site/` directory with `index.html` + Pico.css (classless framework)
-- [ ] Write content with embedded charts from D4 (SVG/PNG from matplotlib)
-- [ ] Add interactive comparison chart via Chart.js or D3.js
-- [ ] Deploy via GitHub Pages (Settings → Source → `site/` folder on `main`)
+- [x] Set up `site/` directory with `index.html` + Pico.css (classless framework)
+- [x] Write content with embedded charts from D4 (SVG/PNG from matplotlib)
+- [x] Add interactive comparison chart via Chart.js (BitFilter vs CRoaring log-scale bar chart)
+- [x] Deploy via GitHub Pages (Actions workflow with `actions/deploy-pages@v4`)
 
 ---
 
@@ -156,6 +156,6 @@ Phase 3 — Publishing (can parallelize)
 
 - [x] CRoaring, DuckDB, SQLite numbers collected and recorded
 - [x] Roofline chart generated with all variants plotted
-- [ ] CI green on both x86 and ARM
-- [ ] GitHub Pages site live with full narrative + charts
+- [x] CI green on both x86 and ARM
+- [x] GitHub Pages site live with full narrative + charts
 - [ ] plan.md updated to reflect final Week 4 outcomes

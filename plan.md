@@ -315,8 +315,9 @@ target_link_libraries(tests bitfilter GTest::gtest_main)
 - Benchmark against CRoaring (industry-standard Roaring Bitmap library)
 - Benchmark against DuckDB and SQLite for equivalent queries
 - Build roofline model: plot achieved GB/s vs theoretical memory bandwidth ceiling
-- Write developer blog post (problem → measurement → optimization → result)
+- Write developer blog post (problem → measurement → optimization → result) → published as GitHub Pages site (`site/index.html`)
 - Publish GitHub repo with CI matrix: x86 AVX2 (`ubuntu-latest`) + ARM SVE (cross-compile + QEMU)
+- GitHub Pages site: 9-section narrative with Pico.css + Chart.js interactive comparison chart + roofline SVG
 - Implement `eval_sve` using `svand_u64_z` / `svbic_u64_z` with `svwhilelt` predication
 - Refactor CMakeLists.txt for architecture-conditional compilation (x86 vs ARM sources/flags)
 
