@@ -169,7 +169,7 @@
     at 60 MB each, dense bitmaps would require 300 GB of RAM. This is why the industry uses
     compressed bitmaps (Roaring) for sparse segments and flat bitmaps for dense ones.
     BitFilter targets the dense regime where flat bitmaps are the fastest possible representation.
-  </div>
+      </div>
 </section>
 
 <!-- ─── 2. Why Bitmaps ────────────────────────────────────────── -->
@@ -215,21 +215,43 @@
   </p>
   <pre><code>for (size_t i = 0; i &lt; n_words; ++i)
     result[i] = a[i] &amp; b[i] &amp; ~not_c[i];</code></pre>
+
+  <h3>The Hypothesis</h3>
   <p>
-    Compiled with <code>-O3 -march=native</code>, GCC auto-vectorizes this into AVX2
-    instructions. The "scalar" code isn't truly scalar at the machine level &mdash;
-    it's the compiler's own SIMD codegen.
+    The plan I had was straightforward: write a scalar baseline, then beat it with explicit AVX2
+    intrinsics that process 256 users per instruction instead of 64. At L3 scale (1M users),
+    this worked &mdash; AVX2 was <strong>2&times; faster</strong> (101 GB/s vs 47 GB/s).
+  </p>
+
+  <h3>The Surprise</h3>
+  <p>
+    At 500M users (DRAM-resident), the scalar baseline <em>outperformed</em> the explicit AVX2
+    loop &mdash; 16.7 GB/s vs 12.6 GB/s. Unrolling made things worse: 2&times; unrolling dropped
+    to 10.3 GB/s, 4&times; to 9.3 GB/s. More SIMD was slower, not faster. The workload had
+    crossed from compute-bound (L3) to memory-bound (DRAM), and extra instructions only added
+    overhead while the CPU waited on memory.
+  </p>
+
+  <h3>The Investigation</h3>
+  <p>
+    Compiling <code>eval_scalar</code> to assembly and grepping for <code>ymm</code> registers
+    revealed the answer: GCC at <code>-O3 -march=native</code> emits <code>vpand</code>,
+    <code>vpandn</code>, and <code>vmovdqu</code> with <code>%ymm</code> registers &mdash;
+    <strong>full AVX2 auto-vectorization.</strong> The &ldquo;scalar&rdquo; code was never truly scalar at
+    the machine level &mdash; <strong>both paths used the same SIMD instructions; both hit the
+    same DRAM wall.</strong>
   </p>
   <p>
-    <strong>Result:</strong> Scalar and hand-written AVX2 both hit
-    <strong>~29 GB/s</strong> actual DRAM throughput. They are identical on the roofline
-    chart. The bottleneck isn't the ALU &mdash; it's the memory bus. Both paths issue
-    similar memory access patterns and hit the same wall.
+    Adding <code>__attribute__((optimize("no-tree-vectorize")))</code> to the scalar baseline
+    confirmed: genuine scalar and auto-vectorized scalar both measured ~16&ndash;18 GB/s at
+    DRAM scale. The instruction mix doesn't matter when the CPU is memory-bound &mdash; it
+    finishes the math before the next cache line arrives regardless.
   </p>
+
   <div class="insight">
-    For simple boolean bitmap queries, <strong>scalar C++ at <code>-O3</code> is already
-    optimal.</strong> The real optimization was proving no further optimization is possible
-    &mdash; and explaining why.
+    For memory-bound boolean bitmap queries, <strong>scalar C++ at <code>-O3</code> is already
+    at the DRAM ceiling.</strong> The "optimization" was proving no further optimization is
+    possible &mdash; and explaining <em>why</em> through disassembly and roofline analysis.
   </div>
 </section>
 
@@ -237,7 +259,7 @@
 <section id="avx2">
   <h2>4. AVX2: Why Prefetching Won</h2>
   <p>
-    The hand-written AVX2 path adds explicit software prefetching &mdash; requesting
+    The explicit-intrinsics AVX2 path adds software prefetching &mdash; requesting
     data into L1 cache 128 bytes ahead of the current position. This hides DRAM latency
     by overlapping data fetch with computation.
   </p>
@@ -274,9 +296,15 @@ svst1_u64(pg, result + i, vr);</code></pre>
     branches inside the eval loop, so the CPU never has to "stop and think."
   </p>
   <div class="insight">
-    The SVE path uses <code>svwhilelt</code> predication &mdash; the hardware generates
-    a mask for remaining elements, handling tail iterations automatically with no
-    scalar cleanup. The same binary runs across all SVE widths (128-bit to 2048-bit).
+    <strong>Zero-overhead tail handling.</strong> SVE's <code>svwhilelt</code> generates a
+    predicate mask that lets a single vector loop body handle both full-width and partial
+    tail iterations &mdash; no scalar cleanup loop, no buffer padding, no branch divergence.
+    The predicated loads (<code>svld1</code>) and stores (<code>svst1</code>) retire inactive
+    lanes as no-ops in hardware, so the final iteration pays no penalty. Combined with
+    <code>svcntd()</code> for hardware-vector-length advancement, the same binary runs
+    unmodified across all SVE widths (128-bit to 2048-bit) &mdash; this is the kind of
+    vector-length-agnostic loop that AVX2, with its fixed 256-bit width and mandatory scalar
+    tail, fundamentally cannot express.
   </div>
 </section>
 
@@ -303,6 +331,22 @@ svst1_u64(pg, result + i, vr);</code></pre>
     312.5 MB / 10.7 ms = <strong>29.2 GB/s</strong> actual bus traffic &mdash; that's 26%
     more than the application "sees," and right at the practical DRAM ceiling. The bus is
     already full at one thread. Adding threads only adds overhead.
+  </p>
+
+  <h3>The Threading Experiment</h3>
+  <p>
+    After hitting the memory wall at one thread, the natural next step was parallelism:
+    partition the 500M-user bitmap across cores using over-partitioned chunk dispatch
+    (<code>4 &times; n_threads</code> chunks, cache-line aligned, claimed dynamically via
+    <code>std::atomic&lt;unsigned&gt;</code>). With 12 logical cores, even a 2-thread split
+    should cut wall time. Instead, 2 threads matched 1 thread (0.98&times;), 4 threads
+    <em>regressed</em> to 0.68&times;, and 12 threads still couldn't beat single-threaded.
+    The write-allocate analysis above explains why: the bus was already full.
+  </p>
+  <p>
+    But popcount &mdash; a read-only operation &mdash; told a different story. Single-threaded
+    popcount consumed only 17.1 GB/s, leaving 60% of the bus idle. Here, threading <em>did</em>
+    scale: 1.70&times; at 8 threads, saturating at ~29 GB/s.
   </p>
 
   <h3>Why Popcount Scales but Eval Doesn't</h3>
